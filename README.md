@@ -1,13 +1,13 @@
-## Project : Build a Custom Q&A Chatbot with OpenAI, LangChain, Chroma and Streamlit
+# 🧠 Project: Custom Knowledge Q&A Chatbot
 
 ## 💻 Project Overview
 
 How to build a custom Q&A chatbot using OpenAI, LangChain, and Chroma.  
-The OpenAI API generates answers to questions, LangChain translates the questions and answers to and from English, and Chroma.  
+The OpenAI API generates answers to questions, LangChain handles prompt construction and retrieval, and ChromaDB serves as a vector database to search relevant content chunks.
 
-<!-- This section describes the Python setup using Python 3.12.9 -->
+---
 
-## 🛠️ Requirements : Installation & Setup
+## 🛠️ Requirements: Installation & Setup
 
 ### Python 3.12.9
 
@@ -17,17 +17,20 @@ pyenv install 3.12.9
 pyenv local 3.12.9
 ```
 
-### Packages
+### Python Packages
 
-- **LangChain** : [LangChain](https://www.langchain.com/) is a Python library for building LLM-powered applications.
-- **Chroma** : [Chroma](https://www.trychroma.com/) is a vector database.
-- **OpenAI** : [OpenAI](https://platform.openai.com) API interface.
-- **python-dotenv** : Loads environment variables from a `.env` file.
-- **Streamlit** : For building the web UI.
+Installed via `requirements.txt`:
 
-<!-- Removed streamlit-chat as it’s deprecated in favor of st.chat_message -->
+- **LangChain**: Framework to interface with LLMs and orchestrate prompt chaining.
+- **Chroma**: Lightweight vector database for fast retrieval.
+- **OpenAI**: Language model and embedding API.
+- **python-dotenv**: Loads environment variables.
+- **Streamlit**: Interactive UI framework.
+- **Others**: `tiktoken`, `colorama`, `requests`, `dateutil`.
 
-## 🌐 Create a virtual environment & activate the virtual environment :
+---
+
+## 🌐 Virtual Environment Setup
 
 **MacOS/Linux**:
 
@@ -43,100 +46,214 @@ python -m venv env
 env\Scripts\activate
 ```
 
-## 🏗️ Installation
+---
+
+## 📦 Installation
 
 ```bash
 pip install -r requirements.txt
 ```
 
-<!-- Optional: Only use if testing with the latest LangChain releases -->
-<!-- pip install --upgrade langchain -->
+---
 
-## 🔑 Get your OpenAI API key
+## 🔑 API Key
 
-[Generate API Key](https://platform.openai.com/account/api-keys)
+Get your key from [OpenAI](https://platform.openai.com/account/api-keys)
 
-Set the key as an environment variable:
+Set it via environment variable:
 
 ```bash
 export OPENAI_API_KEY='sk-...'
 ```
 
-Or create a `.env` file :
+Or store in a `.env` file:
 
 ```
 OPENAI_API_KEY=sk-...
 ```
-Or update and use example `.env.example` file.
-```
+
+Or duplicate template:
+
+```bash
 cp .env.example .env
 ```
-## ▶️ Run the app (command line interface)
+
+---
+
+## ▶️ Run the Application
+
+### CLI Mode
 
 ```bash
 python main.py
 ```
 
-## ▶️ Run the Streamlit app (browser UI on localhost:8501)
+### Web UI (Streamlit)
 
 ```bash
 streamlit run app.py
 ```
-## ▶️ Run the Streamlit app without model selector (browser UI on localhost:8501)
+
+Alternative (minimalist UI):
 
 ```bash
 streamlit run app-nb.py
 ```
 
+Then open [http://localhost:8501](http://localhost:8501)
+
 ---
 
-## 🐳 Running with Docker
+## ⚙️ Technology Stack
 
-### Build the Docker image
+| Component          | Purpose                                                                 |
+|--------------------|-------------------------------------------------------------------------|
+| **LangChain**      | Manages prompt templates, chaining, and LLM interactions.               |
+| **OpenAI API**     | Provides natural language understanding and embedding generation.       |
+| **ChromaDB**       | Stores document embeddings for similarity search.                       |
+| **Streamlit**      | Builds a user-friendly, interactive web interface.                      |
+| **Docker**         | Containers for environment consistency and ease of deployment.          |
+| **Docker Compose** | Orchestrates CLI and UI services simultaneously with shared config.     |
+| **dotenv**         | Loads and manages API keys securely in local development.               |
+
+---
+## 🧱 Architecture Summary
+
+1. **Document Ingestion**
+    - Raw text (`faq_real_estate.txt`) is loaded and split into 100-character chunks using `CharacterTextSplitter`.
+
+2. **Embedding & Vector Storage**
+    - Chunks are embedded using `OpenAIEmbeddings` and stored in a ChromaDB vector store.
+
+3. **Query Flow**
+    - User questions are embedded, compared to stored chunks for similarity, and the top matches are passed as **context**.
+
+4. **Prompt Assembly & LLM Output**
+    - LangChain constructs a system + human prompt using the retrieved context and sends it to OpenAI’s chat model.
+
+5. **Response Output**
+    - The chatbot returns a refined, context-aware response through CLI or Streamlit UI.
+
+---
+
+## 📁 Source Structure
+
+```
+.
+├── app.py              # Streamlit app (model selector)
+├── app-nb.py           # Streamlit app (simplified)
+├── main.py             # CLI chatbot + core logic
+├── Dockerfile
+├── docker-compose.yml
+├── docs/
+│   └── faq_real_estate.txt
+├── requirements.txt
+└── .env.example
+```
+
+---
+
+## 🧠 Core Code Snippets
+
+### Document Loading
+
+```python
+raw_documents = TextLoader("./docs/faq_real_estate.txt").load()
+text_splitter = CharacterTextSplitter(chunk_size=100)
+documents = text_splitter.split_documents(raw_documents)
+```
+
+### Embedding & Chroma Vector Store
+
+```python
+embedding_function = OpenAIEmbeddings()
+db = Chroma.from_documents(documents, embedding_function)
+retriever = db.as_retriever()
+```
+
+### Prompt & Chain with LangChain
+
+```python
+template = (
+    "You are a knowledgeable assistant. Use the following info:\n{context}"
+)
+chat_prompt = ChatPromptTemplate.from_messages([
+    SystemMessagePromptTemplate.from_template(template),
+    HumanMessagePromptTemplate.from_template("{question}")
+])
+```
+
+### Chain Execution
+
+```python
+chain = (
+    {"context": retriever, "question": RunnablePassthrough()}
+    | chat_prompt
+    | ChatOpenAI(...)
+    | StrOutputParser()
+)
+response = chain.invoke("What are the closing costs?")
+```
+
+---
+
+## 🐳 Docker Setup
+
+### Build Image
+
 ```bash
 docker build -t custom-chatbot-cli .
 ```
 
-### Run the chatbot in CLI mode
+### Run CLI in Container
+
 ```bash
 docker run -it --rm --env-file .env custom-chatbot-cli
 ```
 
 ---
 
-## 🧩 Running with Docker Compose
+## 🧩 Docker Compose (Preferred)
 
-### Start the application
 ```bash
 docker-compose up --build
 ```
 
-This loads environment variables from `.env` and mounts source files. To rebuild with changes:
+Rebuild with changes:
+
 ```bash
 docker-compose up --build --force-recreate
 ```
 
 ---
 
-### Notes
-- Make sure your `.env` file contains a valid OpenAI API key.
-- Ensure `docs/` includes your `.txt` knowledge files (e.g., `faq_real_estate.txt`).
-- Local Python environments (`env/`) are excluded via `.dockerignore`.
+## 🧼 Dockerignore Example
+
+Make builds faster by ignoring:
+
+```
+env/
+.idea/
+__pycache__/
+```
 
 ---
 
-## ✅ How to Use
+## ✅ Use Cases
 
-Place the `docker-compose.yml` file at the root of your project.
+- **Real Estate Agents** – e.g., Sunrise Realty FAQ bot
+- **Internal Knowledgebase** – HR, IT support, SOPs
+- **Legal/Compliance Q&A** – Clause-specific search
+- **Education** – Course notes and FAQ retrieval
 
-### Run the CLI chatbot:
-```bash
-docker compose run chatbot-cli
-```
+---
 
-### Run the Streamlit web app:
-```bash
-docker compose up chatbot-ui
-```
+## 💡 Tips for Customization
 
-Then open [http://localhost:8501](http://localhost:8501) in your browser.
+- ✅ Swap out `faq_real_estate.txt` with any domain-specific `.txt` content in `docs/`.
+- ✅ Update prompt template in `main.py` to reflect your brand tone.
+- ✅ Modify vector store to use alternatives like FAISS or Weaviate for scale.
+- ✅ Replace `OpenAIEmbeddings` with Hugging Face or Cohere embeddings.
+- ✅ Store chat history with SQLite or connect Streamlit to Supabase for persistence.
+
+---
