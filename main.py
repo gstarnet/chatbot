@@ -64,7 +64,10 @@ def load_embeddings(documents, user_query):
 def generate_response(retriever, query):
     """Generates a response using retrieval-augmented generation."""
     chain = (
-        {"context": retriever, "question": RunnablePassthrough()}
+        {
+            "context": retriever | format_docs,
+            "question": RunnablePassthrough(),
+        }
         | chat_prompt_template
         | model
         | StrOutputParser()
