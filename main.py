@@ -1,21 +1,22 @@
 import os
 from dotenv import load_dotenv
 
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.document_loaders import TextLoader
-from langchain_community.vectorstores import Chroma
-
+from langchain_community.retrievers import BM25Retriever
+from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
-from langchain.text_splitter import CharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 load_dotenv()
-# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-# Model config from .env or fallback
-LANGUAGE_MODEL = os.getenv("LANGUAGE_MODEL", "gpt-3.5-turbo")
 
-model = ChatOpenAI(model_name=LANGUAGE_MODEL)
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+LANGUAGE_MODEL = os.getenv("LANGUAGE_MODEL", "gemma3:4b")
+
+
+class ChatbotRuntimeError(RuntimeError):
+    """Raised when the local model runtime is unavailable."""
 
 # Prompt Templates
 template = (
@@ -32,41 +33,31 @@ system_message_prompt = SystemMessagePromptTemplate.from_template(template)
 human_message_prompt = HumanMessagePromptTemplate.from_template("{question}")
 chat_prompt_template = ChatPromptTemplate.from_messages([system_message_prompt, human_message_prompt])
 
-# Chroma-compatible wrapper for embedding function
-class ChromaEmbeddingWrapper:
-    def __init__(self):
-        self._embedder = OpenAIEmbeddings()
-
-    def __call__(self, input):
-        return self._embedder.embed_documents(input)
-
-    def embed_documents(self, texts):
-        return self._embedder.embed_documents(texts)
-
-    def embed_query(self, text):
-        return self._embedder.embed_query(text)
-
 def format_docs(docs):
     return "\n\n".join([d.page_content for d in docs])
 
 def load_documents():
     """Loads and splits documents from the ./docs directory."""
     raw_documents = TextLoader("./docs/faq_real_estate.txt").load()
-    text_splitter = CharacterTextSplitter(chunk_size=100, chunk_overlap=0)
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=300,
+        chunk_overlap=50,
+    )
     return text_splitter.split_documents(raw_documents)
 
-def load_embeddings(documents, user_query):
-    """Embeds and loads documents into Chroma vector store with compliant wrapper."""
-    embedding_function = ChromaEmbeddingWrapper()
-    db = Chroma.from_documents(
-        documents,
-        embedding=embedding_function,
-        collection_name="abc-faq"
-    )
-    return db.as_retriever()
+def load_retriever(documents):
+    """Creates a lightweight keyword retriever for the local FAQ corpus."""
+    retriever = BM25Retriever.from_documents(documents)
+    retriever.k = 4
+    return retriever
 
-def generate_response(retriever, query):
+def generate_response(retriever, query, model_name):
     """Generates a response using retrieval-augmented generation."""
+    model = ChatOllama(
+        model=model_name,
+        base_url=OLLAMA_BASE_URL,
+        temperature=0.2,
+    )
     chain = (
         {
             "context": retriever | format_docs,
@@ -80,14 +71,29 @@ def generate_response(retriever, query):
 
 def query(query_text, model_name=None):
     """High-level query function used by app.py or CLI."""
-    global model
-    if model_name:
-       model = ChatOpenAI(model_name=model_name)
+    current_model = model_name or LANGUAGE_MODEL
 
-    documents = load_documents()
-    retriever = load_embeddings(documents, query_text)
-    response = generate_response(retriever, query_text)
-    return response
+    try:
+        documents = load_documents()
+        retriever = load_retriever(documents)
+        response = generate_response(retriever, query_text, current_model)
+        return response
+    except Exception as exc:
+        message = str(exc)
+        if "model failed to load" in message:
+            raise ChatbotRuntimeError(
+                "Ollama could not load the requested local model. "
+                f"Chat model: {current_model}. "
+                "This usually means the Ollama server is out of available memory or is in a bad state. "
+                "Try `ollama ps`, restart the Ollama server, or switch to a smaller chat model."
+            ) from exc
+        if "Failed to connect" in message or "could not connect" in message.lower():
+            raise ChatbotRuntimeError(
+                "The app could not reach the Ollama server. "
+                f"Expected server: {OLLAMA_BASE_URL}. "
+                "Make sure `ollama serve` is running."
+            ) from exc
+        raise
 
 # CLI entrypoint
 if __name__ == "__main__":
