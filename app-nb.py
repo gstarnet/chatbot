@@ -1,9 +1,8 @@
 import streamlit as st
-import os
 from dotenv import load_dotenv
-from main import query
+from main import ChatbotRuntimeError, query
 
-# Load API key from .env (for LangChain/OpenAI use)
+# Load Ollama config from .env
 load_dotenv()
 
 # Page title
@@ -33,7 +32,11 @@ def start_chat():
             st.markdown(prompt)
 
         # Get AI response and display
-        response = query(prompt)
+        try:
+            response = query(prompt)
+        except ChatbotRuntimeError as exc:
+            response = str(exc)
+            st.error(response)
         with st.chat_message("assistant"):
             st.markdown(response)
 

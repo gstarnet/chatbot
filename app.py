@@ -1,10 +1,11 @@
 import streamlit as st
 import os
 from dotenv import load_dotenv
-from main import query
+from main import ChatbotRuntimeError, query
 
-# Load API key from .env (for LangChain/OpenAI use)
+# Load Ollama config from .env
 load_dotenv()
+DEFAULT_MODEL = os.getenv("LANGUAGE_MODEL", "gemma3:4b")
 
 # Page title
 st.title("💬 Sunrise Realty Q&A Assistant")
@@ -25,8 +26,7 @@ def start_chat():
                 with st.chat_message(message["role"]):
                     st.markdown(message["content"])
 
-    # Dropdown for model selection
-    model = st.sidebar.selectbox("Choose a model:", ["gpt-3.5-turbo", "gpt-4"])
+    model = st.sidebar.selectbox("Choose a model:", [DEFAULT_MODEL])
 
     # Get user input
     if prompt := st.chat_input("Ask me anything..."):
@@ -36,7 +36,11 @@ def start_chat():
             st.markdown(prompt)
 
         # Use selected model
-        response = query(prompt, model_name=model)
+        try:
+            response = query(prompt, model_name=model)
+        except ChatbotRuntimeError as exc:
+            response = str(exc)
+            st.error(response)
         with st.chat_message("assistant"):
             st.markdown(response)
 

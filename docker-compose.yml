@@ -7,9 +7,13 @@ services:
       dockerfile: Dockerfile
     container_name: chatbot-cli
     env_file: .env
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     command: python main.py
     stdin_open: true
     tty: true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   chatbot-ui:
     build:
@@ -17,6 +21,10 @@ services:
       dockerfile: Dockerfile
     container_name: chatbot-ui
     env_file: .env
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     command: streamlit run app.py --server.port=8501 --server.enableCORS=false
     ports:
       - "8501:8501"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
