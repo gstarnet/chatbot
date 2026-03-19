@@ -97,8 +97,6 @@ The production request path should look like this:
 
 ## Recommended Service Chain
 
-Source Mermaid definition: [`docs/prod-architecture-mermaid.html`](docs/prod-architecture-mermaid.html)
-
 ![Production architecture flow](docs/prod-architecture.png)
 
 ## Migration Phases
